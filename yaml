@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+spec:
+  # Создаем 4 реплики пода, как определили в нагрузочном тестировании
+  replicas: 4
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      # Распределяем поды по всем зонам доступности для отказоустойчивости
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - web-app
+              topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: web-app
+        image: your-image:latest
+        resources:
+          # Задаем лимиты CPU и Memory чтобы избежать перегрузки нод
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          # Задаем requests CPU и Memory выше обычного потребления, чтобы учесть 
+          # пиковые нагрузки при инициализации
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        # Настраиваем liveness и readiness probes, чтобы Kubernetes мог 
+        # отслеживать состояние пода и перезапускать его при необходимости
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app-service
+spec:
+  selector:
+    app: web-app
+  # Используем тип LoadBalancer для распределения нагрузки между подами
+  type: LoadBalancer
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
